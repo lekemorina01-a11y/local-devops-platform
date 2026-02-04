@@ -1,0 +1,75 @@
+pipeline {
+  agent any
+
+  environment {
+    REGISTRY = "localhost:5000"
+    API_IMAGE = "api"
+    WORKER_IMAGE = "worker"
+    KUBE_NAMESPACE = "dev"
+  }
+
+  stages {
+
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Build API Image') {
+      steps {
+        sh '''
+          docker build -t $REGISTRY/$API_IMAGE:latest api
+        '''
+      }
+    }
+
+    stage('Build Worker Image') {
+      steps {
+        sh '''
+          docker build -t $REGISTRY/$WORKER_IMAGE:latest worker
+        '''
+      }
+    }
+
+    stage('Push Images to Local Registry') {
+      steps {
+        sh '''
+          docker push $REGISTRY/$API_IMAGE:latest
+          docker push $REGISTRY/$WORKER_IMAGE:latest
+        '''
+      }
+    }
+
+    stage('Deploy to DEV') {
+      steps {
+        sh '''
+          kubectl apply -f k8s/ -n $KUBE_NAMESPACE
+        '''
+      }
+    }
+
+    stage('Smoke Test') {
+      steps {
+        sh '''
+          kubectl get pods -n $KUBE_NAMESPACE
+        '''
+      }
+    }
+
+    stage('Manual Approval') {
+      steps {
+        input message: 'Deploy to STAGE?'
+      }
+    }
+
+    stage('Promote to STAGE') {
+      steps {
+        sh '''
+          kubectl apply -f k8s/ -n stage
+        '''
+      }
+    }
+  }
+}
+
